@@ -1,3 +1,160 @@
+Great! Here's a **step-by-step guide** to help you set up a **GCP + OHIF demo project** for viewing DICOM files, keeping it **secure and budget-friendly (≤ $100)**.
+
+---
+
+## 🌐 Step 1: Set Up Google Cloud Project
+
+1. Go to [GCP Console](https://console.cloud.google.com/).
+2. Create a **new project** (e.g., `dicom-demo`).
+3. Enable **Billing**, but set a **budget alert**:
+   - Go to **Billing > Budgets & alerts**
+   - Set a $100 budget with email alerts at 50%, 75%, 90%, 100%
+
+---
+
+## 🧠 Step 2: Enable Required APIs
+
+In your project, enable these APIs:
+- **Cloud Healthcare API**
+- **Cloud Storage**
+- **IAM & Admin**
+- **Compute Engine (optional, if hosting OHIF yourself)**
+
+You can do this via UI or CLI:
+
+```bash
+gcloud services enable healthcare.googleapis.com storage.googleapis.com compute.googleapis.com
+```
+
+---
+
+## 📦 Step 3: Upload DICOM Files to GCS (Google Cloud Storage)
+
+1. Create a bucket:
+   ```bash
+   gsutil mb -p dicom-demo -l us-central1 gs://dicom-demo-bucket/
+   ```
+
+2. Upload your DICOM files:
+   ```bash
+   gsutil cp *.dcm gs://dicom-demo-bucket/
+   ```
+
+---
+
+## 🏥 Step 4: Create a DICOM Store with DICOMweb
+
+1. Create a Cloud Healthcare dataset:
+   ```bash
+   gcloud healthcare datasets create dicom_dataset --location=us-central1
+   ```
+
+2. Create a DICOM store with DICOMweb enabled:
+   ```bash
+   gcloud healthcare dicom-stores create dicom_store \
+     --dataset=dicom_dataset \
+     --location=us-central1 \
+     --enable-dicom-web
+   ```
+
+3. Import DICOM files:
+   ```bash
+   gcloud healthcare dicom-stores import gcs dicom_store \
+     --dataset=dicom_dataset \
+     --location=us-central1 \
+     --gcs-uri=gs://dicom-demo-bucket/*
+   ```
+
+---
+
+## 👁️ Step 5: Deploy OHIF Viewer (Frontend)
+
+You have 3 options:
+1. **Quick demo**: Use the [OHIF Standalone Viewer](https://viewer.ohif.org/) (not customizable).
+2. **Host on Firebase or GCS** (cheaper, static site).
+3. **Host on VM** (more customizable, but may exceed budget).
+
+### Option 2 (recommended for cost-saving):
+
+1. Build OHIF locally:
+   ```bash
+   git clone https://github.com/OHIF/Viewers.git
+   cd Viewers
+   yarn install
+   yarn run build
+   ```
+
+2. Deploy to Firebase:
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   firebase init
+   firebase deploy
+   ```
+
+3. Configure OHIF to point to your DICOMWeb:
+   In `.env` or config files, set:
+
+   ```js
+   window.config = {
+     servers: [
+       {
+         name: 'GCP DICOMWeb',
+         wadoUriRoot: '',
+         qidoRoot: 'https://healthcare.googleapis.com/v1/projects/YOUR_PROJECT/locations/us-central1/datasets/dicom_dataset/dicomStores/dicom_store/dicomWeb',
+         wadoRoot: 'same_as_above',
+         supportsFuzzyMatching: true,
+         imageRendering: 'wadors',
+         thumbnailRendering: 'wadors',
+         requestOptions: {
+           requestFromBrowser: true,
+         },
+       },
+     ],
+   };
+   ```
+
+---
+
+## 🔒 Step 6: Add Authentication
+
+Use **Firebase Authentication**:
+
+1. Enable Firebase Auth (Email or Google sign-in)
+2. Wrap OHIF with Firebase auth:
+   - Add login page
+   - Protect routes
+   - Use Firebase SDK to control access
+
+3. Use **IAM** roles in GCP to ensure only specific users can access the DICOMWeb endpoints.
+
+---
+
+## 💰 Step 7: Monitor and Control Costs
+
+- Set **budget alert**
+- Use **Cloud Monitoring** to track DICOMWeb API usage
+- Enable **Cloud Armor** or basic IP allowlist (to avoid abuse)
+
+---
+
+## ✅ Final Checklist
+
+| Task                             | Done? |
+|----------------------------------|-------|
+| Project + Budget created         | ☐     |
+| Healthcare API + GCS setup       | ☐     |
+| DICOM files uploaded             | ☐     |
+| DICOM Store + DICOMweb ready     | ☐     |
+| OHIF Viewer deployed             | ☐     |
+| OHIF configured to use DICOMWeb  | ☐     |
+| Authentication added             | ☐     |
+| Alerts and cost caps set         | ☐     |
+
+---
+
+Want a ready-made `firebase.json` and `dicomweb.json` for OHIF? Or want help deploying to GCP App Engine or Cloud Run instead?
+---
 Great setup! Since you're hosting **OHIF on Firebase** and getting a **401 error** when trying to access the **GCP Cloud Healthcare API**, the **cleanest and safest way forward** is to build a **proxy server that uses a service account** — **Option 1**.
 
 Let’s go step by step to implement this solution using an Express-based proxy and deploy it to **Cloud Run**, which is easy, scalable, and Firebase-friendly:
@@ -80,8 +237,11 @@ app.use('/dicomweb', async (req, res) => {
 });
 
 app.listen(8080, () => console.log('Proxy server is running on port 8080'));
+```
+
 Create a `package.json`:
-json
+
+```json
 {
   "name": "dicom-proxy",
   "version": "1.0.0",
